@@ -3,6 +3,7 @@ import threading
 import socket
 import pickle
 import time
+import Block
 
 class CentralServer(object):
 
@@ -14,6 +15,8 @@ class CentralServer(object):
             self.client_list = manager.list().extend(client_list)
         self.peer_id = multiprocessing.Value('l', 1)
         self.lock = multiprocessing.Lock()
+        with open('blockchain_file.chain', 'rb') as bcf:
+            self.blockchain = pickle.load(bcf)
 
     def client_connect_check(self, index):
         test_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -116,10 +119,29 @@ class CentralServer(object):
                     if (connection.recv(4096).decode() == 'Element Received'):
                         pass
                 if(connection.recv(4096).decode() == 'List Received'):
+                    self.send_chain(connection)
                     connection.close()
             else:
                 print("Error incorrect code received")
                 connection.close()
+    
+    def send_chain(self, connection):
+        connection.send(b'CHAIN SEND')
+        if (connection.recv(4096).decode() == 'CHAIN OK'):
+            connection.send(str(len(self.blockchain)).encode())
+        if (connection.recv(4096).decode() == 'CHAIN LENGTH RECEIVED'):
+            for i in range(0, len(self.blockchain)):
+                temp = self.blockchain[i]
+                if not temp:
+                    connection.send(pickle.dumps('EOF'))
+                    break
+                pickled_temp = pickle.dumps(temp)
+                connection.send(pickled_temp)
+                if (connection.recv(4096).decode() == 'Chain Element Received'):
+                    pass
+            if(connection.recv(4096).decode() == 'Chain Received'):
+                connection.close()
+        
         
     def start_server(self):
         server_thread = threading.Thread(target=self.listener_socket, args=())
@@ -131,8 +153,6 @@ class CentralServer(object):
         server_thread.join()
         test_clients.join()
         peer_update.join()
-
-        
 
 def main():
     s = CentralServer()

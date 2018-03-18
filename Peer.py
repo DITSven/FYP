@@ -19,6 +19,7 @@ class Peer(object):
         self.connected_list = manager.list()
         self.own_id = multiprocessing.Value('l', 1)
         self.lock = multiprocessing.Lock()
+        self.blockchain = []
 
     def first_connect(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -48,9 +49,22 @@ class Peer(object):
             self.peer_list.append(temp_element)
             sock.send(b'Element Received')
         sock.send(b'List Received')
+        if(sock.recv(4096).decode() == 'CHAIN SEND'):
+            sock.send(b'CHAIN OK')
+        chain_size = int(sock.recv(4096).decode())
+        sock.send(b'CHAIN LENGTH RECEIVED')
+        for i in range(0, chain_size):
+            temp_obj = sock.recv(4096)
+            temp_element = pickle.loads(temp_obj)
+            if (temp_element == 'EOF'):
+                break
+            self.blockchain.append(temp_element)
+            sock.send(b'Chain Element Received')
+        sock.send(b'Chain Received')
         sock.close()
         for i in self.peer_list:
             print(i)
+        print(self.blockchain[0].device_id)
 
     def update_list(self):
         lock = self.lock
