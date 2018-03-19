@@ -1,0 +1,3 @@
+class DeviceExample():
+
+    def 

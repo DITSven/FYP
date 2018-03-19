@@ -95,37 +95,52 @@ class CentralServer(object):
             connection, address = sock.accept()
             print("Socket opened "+str(address))
             connection.send(b'CONNECTED')
-            if (connection.recv(4096).decode() == 'THIS PEER'):
-                connection.send(b'HOST REQUEST')
-            this_peer_host = connection.recv(4096).decode()
-            print("Peer host: "+ this_peer_host)
-            connection.send(b'PORT REQUEST')
-            this_peer_port = int(connection.recv(4096).decode())
-            print("Peer port: " + str(this_peer_port))
-            peer_details = [self.peer_id.value, this_peer_host, this_peer_port]
-            self.peer_id.value = self.peer_id.value + 1
-            self.client_list.append(peer_details)
-            connection.send(b'PEER RECEIVED')
-            if (connection.recv(4096).decode() == 'Peer List Request'):
-                connection.send(str(len(self.client_list)).encode())
-            if (connection.recv(4096).decode() == 'OK'):
-                for i in range(0, len(self.client_list)):
-                    temp = self.client_list[i]
-                    if not temp:
-                        connection.send(pickle.dumps('EOL'))
-                        break
-                    pickled_temp = pickle.dumps(temp)
-                    connection.send(pickled_temp)
-                    if (connection.recv(4096).decode() == 'Element Received'):
-                        pass
-                if(connection.recv(4096).decode() == 'List Received'):
-                    self.send_chain(connection)
-                    connection.close()
+            rec = connection.recv(4096).decode()
+            if (rec == 'THIS PEER'):
+                self.send_peer_list(connection)
+            elif(rec == 'THIS DEVICE'):
+                self.device_connect(connection)
             else:
                 print("Error incorrect code received")
                 connection.close()
-    
+
+    def send_peer_list(self, connection):
+        print("send peer list")
+        connection.send(b'HOST REQUEST')
+        this_peer_host = connection.recv(4096).decode()
+        print("Peer host: "+ this_peer_host)
+        connection.send(b'PORT REQUEST')
+        this_peer_port = int(connection.recv(4096).decode())
+        print("Peer port: " + str(this_peer_port))
+        peer_details = [self.peer_id.value, this_peer_host, this_peer_port]
+        self.peer_id.value = self.peer_id.value + 1
+        self.client_list.append(peer_details)
+        connection.send(b'PEER RECEIVED')
+        if (connection.recv(4096).decode() == 'Peer List Request'):
+            connection.send(str(len(self.client_list)).encode())
+        if (connection.recv(4096).decode() == 'OK'):
+            for i in range(0, len(self.client_list)):
+                temp = self.client_list[i]
+                if not temp:
+                    connection.send(pickle.dumps('EOL'))
+                    break
+                pickled_temp = pickle.dumps(temp)
+                connection.send(pickled_temp)
+                if (connection.recv(4096).decode() == 'Element Received'):
+                    pass
+            if(connection.recv(4096).decode() == 'List Received'):
+                self.send_chain(connection)
+                connection.close()
+        else:
+            print("Error incorrect code received")
+            connection.close()
+
+    def device_connect(self, connection):
+        print("device connected")
+        connection.close()
+
     def send_chain(self, connection):
+        print("Sending chain")
         connection.send(b'CHAIN SEND')
         if (connection.recv(4096).decode() == 'CHAIN OK'):
             connection.send(str(len(self.blockchain)).encode())

@@ -59,7 +59,9 @@ class Peer(object):
             if (temp_element == 'EOF'):
                 break
             self.blockchain.append(temp_element)
+            print("block received")
             sock.send(b'Chain Element Received')
+        print("chain received")
         sock.send(b'Chain Received')
         sock.close()
         for i in self.peer_list:
