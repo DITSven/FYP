@@ -137,6 +137,15 @@ class CentralServer(object):
 
     def device_connect(self, connection):
         print("device connected")
+        connection.send(b'PEER SEND')
+        if (connection.recv(4096).decode() == 'PEER REQUEST'):
+            if not self.client_list[0]:
+                print("Send failed")
+                connection.send(b'SEND FAIL')
+            else:
+                connection.send(pickle.dumps(self.client_list[0]))
+            if (connection.recv(4096).decode() == 'PEER RECEIVED'):
+                print("Peer has been received")
         connection.close()
 
     def send_chain(self, connection):

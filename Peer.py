@@ -3,6 +3,7 @@ import threading
 import socket
 import pickle
 import time
+from hashlib import sha512
 from ctypes import c_char_p
 
 class Peer(object):
@@ -120,16 +121,57 @@ class Peer(object):
         self.first_connect()
         while True:
             connection, address = sock.accept()
-            
             try:
-                if connection.recv(4096).decode() == 'PEER':
+                rec = connection.recv(4096).decode()
+                if rec == 'PEER':
                     print("Peer Socket accepted " + str(address))
-                    
+                elif rec == 'DEVICE':
+                    print("Device connected")
+                    connection.send(b'DEVICE PEER CONNECTED')
+                    self.device_auth(connection)
             except socket.error:
                 print("Socket tested")
                 connection.close()
+    
+    def device_auth(self, connection):
+        if(connection.recv(4096).decode() == 'DEV ID SEND'):
+            connection.send(b'DEV ID REQ')
+        dev_id = connection.recv(4096).decode()
+        connection.send(b'DEV PSW REQ')
+        dev_psw = connection.recv(4096).decode()
+        match = False
+        for i in self.blockchain:
+            if i.device_id == sha512(dev_id.encode()).hexdigest():
+                print("Found device")
+                if i.device_pswd == sha512(dev_psw.encode()).hexdigest():
+                    print("Authentication accepted")
+                    match = True
+                    break
+                print("Authentication failed")
+            print("Not found")
+        if match == True:
+            self.device_commands(connection)
             
-            
+    def device_commands(self, connection):
+        connection.send(b'COMMAND REQ')
+        while True:
+            rec = connection.recv(4096).decode()
+            if(rec == 'COMMAND 1'):
+                print("Com 1")
+                connection.send(b'OK')
+            elif(rec == 'COMMAND 2'):
+                print("Com 2")
+                connection.send(b'OK')
+            elif(rec == 'COMMAND 3'):
+                print("Com 3")
+                connection.send(b'OK')
+            elif(rec == 'COMMAND 4'):
+                print("Com 4")
+                connection.send(b'OK')
+            else:
+                print("Commands error")
+                break
+        
     def peer_client_connect(self, host, port):
         lock = self.lock
         print("opened thread")
