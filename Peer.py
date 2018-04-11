@@ -4,6 +4,7 @@ import socket
 import pickle
 import time
 import random
+import ssl
 from hashlib import sha512
 from ctypes import c_char_p
 from Instruction import Instruction
@@ -15,7 +16,6 @@ class Peer(object):
         self.central_server_host = host
         self.central_server_port = s_port
         self.central_update_port = u_port
-        self.peer_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.peer_server_host = multiprocessing.Value(c_char_p, b'')
         self.peer_server_port = multiprocessing.Value('l', 0)
         self.peer_list = manager.list()
@@ -26,56 +26,61 @@ class Peer(object):
         #self.out_command_cache = manager.list()
         self.out_command_cache = [["9fd4e0b4-fc67-4f2c-b6dd-e9b70f3659a0", "177daa1eb3fbb32464e9a6d4d935fc6cbaf96679f5e6c76fa7152662bb09b01f4804592a3ecbffba3eea6c7e542957de7e72f7569a965d5d928fb9eec123ae13", "green"], ["9fd4e0b4-fc67-4f2c-b6dd-e9b70f3659a0", "84fdaef521eb32f1e80fdfee8bc907bf94c4abc43ec49026df0d4ce90f8cda568ec6ee76fcf33b29f44a66f51ab597f2f1a653bed36899b2766efbf699ebe0d5", "It works!"]]
         self.in_command_cache = manager.list()
+        self.cert_file = "./peercert.pem"
+        self.key_file = "./peerkey.pem"
         self.lock = threading.Lock()
 
     #Connects to central server and downloads peer list and blockchain
     def first_connect(self):
         self.lock.acquire()
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+        #context.options |= ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1
+        conn = context.wrap_socket(sock, server_hostname="ServerFYP")
         while True:
             try:
-                sock.connect((self.central_server_host, self.central_server_port))
+                conn.connect((self.central_server_host, self.central_server_port))
                 break
             except socket.error:
                 print('Could not connect socket')
         print("Connected to server")
-        if(sock.recv(4096).decode() == 'CONNECTED'):
+        if(conn.recv(4096).decode() == 'CONNECTED'):
             print("Received")
         else:
             print("Error wrong code")
-        sock.send(b'THIS PEER')
-        if(sock.recv(4096).decode() == 'HOST REQUEST'):
-            sock.send(self.peer_server_host.value)
-        if(sock.recv(4096).decode() == 'PORT REQUEST'):
-            sock.send(str(self.peer_server_port.value).encode())
-        if(sock.recv(4096).decode() == 'PEER RECEIVED'):
-            sock.send(b'Peer List Request')
-        list_size = int(sock.recv(4096).decode())
-        sock.send(b'OK')
+        conn.send(b'THIS PEER')
+        if(conn.recv(4096).decode() == 'HOST REQUEST'):
+            conn.send(self.peer_server_host.value)
+        if(conn.recv(4096).decode() == 'PORT REQUEST'):
+            conn.send(str(self.peer_server_port.value).encode())
+        if(conn.recv(4096).decode() == 'PEER RECEIVED'):
+            conn.send(b'Peer List Request')
+        list_size = int(conn.recv(4096).decode())
+        conn.send(b'OK')
         for i in range(0, list_size):
-            temp_obj = sock.recv(4096)
+            temp_obj = conn.recv(4096)
             temp_element = pickle.loads(temp_obj)
             if (temp_element == 'EOL'):
                 break
             self.peer_list.append(temp_element)
-            sock.send(b'Element Received')
-        sock.send(b'List Received')
-        if(sock.recv(4096).decode() == 'CHAIN SEND'):
-            sock.send(b'CHAIN OK')
-        chain_size = int(sock.recv(4096).decode())
-        sock.send(b'CHAIN LENGTH RECEIVED')
+            conn.send(b'Element Received')
+        conn.send(b'List Received')
+        if(conn.recv(4096).decode() == 'CHAIN SEND'):
+            conn.send(b'CHAIN OK')
+        chain_size = int(conn.recv(4096).decode())
+        conn.send(b'CHAIN LENGTH RECEIVED')
         for i in range(0, chain_size):
-            temp_obj = sock.recv(4096)
+            temp_obj = conn.recv(4096)
             temp_element = pickle.loads(temp_obj)
             if (temp_element == 'EOF'):
                 print("EOF")
                 break
             self.blockchain.append(temp_element)
-            sock.send(b'Chain Element Received')
+            conn.send(b'Chain Element Received')
         print("chain received")
-        sock.send(b'Chain Received')
-        sock.shutdown(socket.SHUT_RDWR)
-        sock.close()
+        conn.send(b'Chain Received')
+        conn.shutdown(socket.SHUT_RDWR)
+        conn.close()
         self.lock.release()
         for i in self.peer_list:
             print(i)
@@ -86,34 +91,38 @@ class Peer(object):
             time.sleep(2)
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.connect((self.central_server_host, self.central_update_port))
+                context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+                #context.options |= ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1
+                conn = context.wrap_socket(sock, server_hostname="ServerFYP")
+                conn.connect((self.central_server_host, self.central_update_port))
                 flag = 1
             except socket.error:
                 print('Could not connect socket')
                 flag = 0
-                sock.close()
+                conn.close()
             if flag == 1:
-                if(sock.recv(4096).decode() == 'CONNECTED'):
-                    sock.send(b'Peer List Request')
-                list_size = int(sock.recv(4096).decode())
-                sock.send(b'OK')
+                if(conn.recv(4096).decode() == 'CONNECTED'):
+                    conn.send(b'Peer List Request')
+                list_size = int(conn.recv(4096).decode())
+                conn.send(b'OK')
                 self.peer_list[:] = []
                 for i in range(0, list_size):
-                    temp_obj = sock.recv(4096)
+                    temp_obj = conn.recv(4096)
                     temp_element = pickle.loads(temp_obj)
                     if (temp_element == 'EOL'):
                         break
                     self.peer_list.append(temp_element)
-                    sock.send(b'Element Received')
+                    conn.send(b'Element Received')
                 #This loop will be more effective when peers run off different hosts
                 for i in range(0, len(self.peer_list)):
                     if self.peer_server_host == self.peer_list[i][1]:
                         if self.peer_server_port == self.peer_list[i][2]:
                             self.own_id.value = self.peer_list[i][0]
-                sock.send(b'List Received')
-                sock.shutdown(socket.SHUT_RDWR)
-                sock.close()
+                conn.send(b'List Received')
+                conn.shutdown(socket.SHUT_RDWR)
+                conn.close()
 
+    #listener for incoming peer connections
     def peer_server_listener(self):
         #self.peer_server_host.value = socket.gethostname().encode()
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -127,22 +136,27 @@ class Peer(object):
             except socket.error:
                 pass
         sock.listen(5)
+        context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        context.load_cert_chain(certfile=self.cert_file, keyfile=self.key_file)
+        #context.options |= ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1
+        context.set_ciphers('EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH')
         self.first_connect()
         while True:
             connection, address = sock.accept()
+            conn = context.wrap_socket(connection, server_side=True)
             try:
-                rec = connection.recv(4096).decode()
+                rec = conn.recv(4096).decode()
                 if rec == 'PEER':
                     print("Peer Socket accepted " + str(address))
                 elif rec == 'DEVICE':
                     print("Device connected")
-                    connection.send(b'DEVICE PEER CONNECTED')
-                    device_thread= threading.Thread(target=self.device_auth, args=(connection,))
+                    conn.send(b'DEVICE PEER CONNECTED')
+                    device_thread= threading.Thread(target=self.device_auth, args=(conn,))
                     device_thread.setDaemon(True)
                     device_thread.start()
             except socket.error:
                 print("Socket tested")
-                connection.close()
+                conn.close()
     
     def device_auth(self, connection):
         if(connection.recv(4096).decode() == 'DEV ID SEND'):
@@ -235,9 +249,12 @@ class Peer(object):
     def peer_client_connect(self, host, port):
         is_connected = False
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+        #context.options |= ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1
+        conn = context.wrap_socket(sock, server_hostname="PeerFYP")
         print("Created socket")
         try:
-            sock.connect((host, port))
+            conn.connect((host, port))
             print("connected socket")
             is_connected = True
         except socket.error:
@@ -245,7 +262,7 @@ class Peer(object):
         if is_connected:
             if host == self.peer_server_host.value.decode() and port == self.peer_server_port.value:
                 print("Connected to self")
-            sock.send(b'PEER')
+            conn.send(b'PEER')
             print("Peer Client Connected" + host + " " + str(port))
 
     #manages connected peer clients

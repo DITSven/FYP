@@ -5,6 +5,7 @@ import threading
 import time
 import random
 import json
+import ssl
 
 class DGUI(object):
     def __init__(self, device_name, host, s_port, name, psw, commands):
@@ -67,111 +68,117 @@ class DGUI(object):
     #connect to central server and receive peer data
     def server_connection(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+        context.options |= ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1
+        conn = context.wrap_socket(sock, server_hostname="ServerFYP")
         try:
-            sock.connect((self.central_server_host, self.central_server_port))
+            conn.connect((self.central_server_host, self.central_server_port))
         except socket.error:
             print('Could not connect socket')
         print("Connected")
-        if(sock.recv(4096).decode() == 'CONNECTED'):
+        if(conn.recv(4096).decode() == 'CONNECTED'):
             print("Received")
         else:
             print("Error wrong code")
-        sock.send(b'THIS DEVICE')
-        if (sock.recv(4096).decode() == 'PEER SEND'):
-            sock.send(b'PEER REQUEST')
-        if (sock.recv(4096).decode() == 'DEVICE ID REQ'):
-            sock.send(self.device_name.encode())
-        peer_unpickled = sock.recv(4096)
+        conn.send(b'THIS DEVICE')
+        if (conn.recv(4096).decode() == 'PEER SEND'):
+            conn.send(b'PEER REQUEST')
+        if (conn.recv(4096).decode() == 'DEVICE ID REQ'):
+            conn.send(self.device_name.encode())
+        peer_unpickled = conn.recv(4096)
         self.peer = pickle.loads(peer_unpickled)
-        sock.send(b'PEER RECEIVED')
-        sock.shutdown(socket.SHUT_RDWR)
-        sock.close()
+        conn.send(b'PEER RECEIVED')
+        conn.shutdown(socket.SHUT_RDWR)
+        conn.close()
 
     #connect to peer
     def peer_connection(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+        context.options |= ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1
+        conn = context.wrap_socket(sock, server_hostname="PeerFYP")
         while True:
             try:
-                sock.connect((self.peer[1], self.peer[2]))
+                conn.connect((self.peer[1], self.peer[2]))
                 break
             except socket.error:
                 print('Could not connect socket')
         print("Connected")
-        sock.send(b'DEVICE')
-        if(sock.recv(4096).decode() == 'DEVICE PEER CONNECTED'):
+        conn.send(b'DEVICE')
+        if(conn.recv(4096).decode() == 'DEVICE PEER CONNECTED'):
             print("Received")
         else:
             print("Error wrong code")
-        sock.send(b'DEV ID SEND')
-        if(sock.recv(4096).decode() == 'DEV ID REQ'):
-            sock.send(self.device_name.encode())
-        if(sock.recv(4096).decode() == 'DEV PSW REQ'):
-            sock.send(self.device_psw.encode())
-        accpt = sock.recv(4096).decode()
+        conn.send(b'DEV ID SEND')
+        if(conn.recv(4096).decode() == 'DEV ID REQ'):
+            conn.send(self.device_name.encode())
+        if(conn.recv(4096).decode() == 'DEV PSW REQ'):
+            conn.send(self.device_psw.encode())
+        accpt = conn.recv(4096).decode()
         if accpt == 'COMMAND IO REQ':
-            self.command_io(sock)
+            self.command_io(conn)
         else:
             print("Device not found")
-            sock.shutdown(socket.SHUT_RDWR)
-            sock.close()
+            conn.shutdown(socket.SHUT_RDWR)
+            conn.close()
             self.connection = False
             self.connect_button["text"] = "Connect"
             self.connect_label["text"] = "No Connection Open"
 
     #run cached commands
-    def command_io(self, sock):
-        sock.send(b'COMMAND IO ACK')
+    def command_io(self, conn):
+        conn.send(b'COMMAND IO ACK')
         while True:
-            rec = sock.recv(4096).decode()
+            rec = conn.recv(4096).decode()
             if rec == 'COMMAND REQ':
                 print("got command req")
                 print(self.out_command_cache)
                 if len(self.out_command_cache) < 1:
-                    sock.send(b'NO COMMAND')
+                    conn.send(b'NO COMMAND')
                     print("sent no command")
                 else:
-                    sock.send(str(len(self.out_command_cache)).encode())
-                    if (sock.recv(4096).decode() == 'COMMAND LENGTH RECEIVED'):
+                    conn.send(str(len(self.out_command_cache)).encode())
+                    if (conn.recv(4096).decode() == 'COMMAND LENGTH RECEIVED'):
                         list_size = len(self.out_command_cache)
                         for i in range(0, list_size):
                             temp = self.out_command_cache[i]
                             if not temp:
-                                sock.send(pickle.dumps('END'))
+                                conn.send(pickle.dumps('END'))
                                 break
                             if temp[1] == "Disconnected":
                                 print("doing disconnected")
                                 pickled_temp = pickle.dumps(temp)
-                                sock.send(pickled_temp)
-                                if (sock.recv(4096).decode() == 'COMMAND RECEIVED'):
-                                    sock.send(b'DISCONNECT')
+                                conn.send(pickled_temp)
+                                if (conn.recv(4096).decode() == 'COMMAND RECEIVED'):
+                                    conn.send(b'DISCONNECT')
                                 print("got comm list rec")
                                 del self.out_command_cache[:i+1]
-                                sock.shutdown(socket.SHUT_RDWR)
-                                sock.close()
+                                conn.shutdown(socket.SHUT_RDWR)
+                                conn.close()
                                 self.connect_button["text"] =  "Connect"
                                 self.connect_label["text"] = "No Connection Open"
                                 return
                             pickled_temp = pickle.dumps(temp)
-                            sock.send(pickled_temp)
-                            if (sock.recv(4096).decode() == 'COMMAND RECEIVED'):
+                            conn.send(pickled_temp)
+                            if (conn.recv(4096).decode() == 'COMMAND RECEIVED'):
                                 pass
-                        sock.send(b'OK')
-                        if (sock.recv(4096).decode() == 'COMMAND LIST RECEIVED'):
-                            sock.send(b'COMMAND LIST RECEIVED ACK')
+                        conn.send(b'OK')
+                        if (conn.recv(4096).decode() == 'COMMAND LIST RECEIVED'):
+                            conn.send(b'COMMAND LIST RECEIVED ACK')
                             print("got comm list rec")
                             del self.out_command_cache[:list_size]
             elif rec == 'INSTRUCTION SEND':
-                sock.send(b'INSTRUCTION ACK')
-                list_size = int(sock.recv(4096).decode())
-                sock.send(b'OK')
+                conn.send(b'INSTRUCTION ACK')
+                list_size = int(conn.recv(4096).decode())
+                conn.send(b'OK')
                 for i in range(0, list_size):
-                    temp_obj = sock.recv(4096)
+                    temp_obj = conn.recv(4096)
                     temp_element = pickle.loads(temp_obj)
                     if (temp_element == 'EOL'):
                         break
                     self.in_command_cache.append(temp_element)
-                    sock.send(b'COMMAND RECEIVED')
-                sock.send(b'COMMAND LIST RECEIVED')
+                    conn.send(b'COMMAND RECEIVED')
+                conn.send(b'COMMAND LIST RECEIVED')
             
 
     #runs commands received 
@@ -220,15 +227,15 @@ class DGUI(object):
         self.window.mainloop()
 
 def main():
-    #with open('./devices/device-0.json', 'rb') as df:
-        #openjsonfile = json.load(df)
-    with open(sys.argv[4], 'rb') as df:
+    with open('./devices/device-0.json', 'rb') as df:
         openjsonfile = json.load(df)
+    #with open(sys.argv[4], 'rb') as df:
+        #openjsonfile = json.load(df)
     name = openjsonfile["device"]
     pswd = openjsonfile["pswd"]
     commands = openjsonfile["commands"]
-    dg = DGUI(device_name=sys.argv[1], host=sys.argv[2], s_port=int(sys.argv[3]), name=name, psw=pswd, commands=commands)
-    #dg = DGUI(device_name="Sample Device", host='127.0.0.1', s_port=20560, name=name, psw=pswd, commands=commands)
+    #dg = DGUI(device_name=sys.argv[1], host=sys.argv[2], s_port=int(sys.argv[3]), name=name, psw=pswd, commands=commands)
+    dg = DGUI(device_name="Sample Device", host='localhost', s_port=20560, name=name, psw=pswd, commands=commands)
     print(sys.argv[0])
     dg.load_window()
 

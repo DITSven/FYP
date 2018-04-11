@@ -3,6 +3,7 @@ import threading
 import socket
 import pickle
 import time
+import ssl
 import Block
 
 class CentralServer(object):
@@ -27,15 +28,20 @@ class CentralServer(object):
         #Open blockchain file and load into memory
         with open('blockchain_file.chain', 'rb') as bcf:
             self.blockchain = pickle.load(bcf)
+        self.cert_file = "./servercert.pem"
+        self.key_file = "./serverkey.pem"
         self.lock = threading.Lock()
 
     #Check that client is still up and running with exception for connection closing mid-test
     def client_connect_check(self, index):
-        test_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         host = self.client_list[index][1]
         port = self.client_list[index][2]
+        context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+        #context.options |= ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1
+        conn = context.wrap_socket(sock, server_hostname="PeerFYP")
         try:
-            test_result = test_sock.connect((host, port))
+            test_result = conn.connect((host, port))
             if test_result == 0:
                 print("Client not found")
                 del self.client_list[index]
@@ -44,7 +50,7 @@ class CentralServer(object):
         except socket.error:
             print("Socket connection lost")
             del self.client_list[index]
-        test_sock.close()
+        conn.close()
         return index
 
     #Iterate through clients and run client_connect_check() and amend peer id's
@@ -64,55 +70,65 @@ class CentralServer(object):
 
     #Opens socket to send the peer list to existing peer without addition to list
     def peer_list_update(self):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock = socket.socket()
         #host = socket.gethostname()
         host = '127.0.0.1' #used for local test purposes
         port = 20566
         sock.bind((host, port))
         print("Update Listening")
         sock.listen(5)
+        context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        context.load_cert_chain(certfile=self.cert_file, keyfile=self.key_file)
+        #context.options |= ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1
+        context.set_ciphers('EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH')
         while True:
             connection, address = sock.accept()
-            connection.send(b'CONNECTED')
-            if (connection.recv(4096).decode() == 'Peer List Request'):
-                connection.send(str(len(self.client_list)).encode())
-            if (connection.recv(4096).decode() == 'OK'):
+            conn = context.wrap_socket(connection, server_side=True)
+            conn.send(b'CONNECTED')
+            if (conn.recv(4096).decode() == 'Peer List Request'):
+                conn.send(str(len(self.client_list)).encode())
+            if (conn.recv(4096).decode() == 'OK'):
                 for i in range(0, len(self.client_list)):
                     temp = self.client_list[i]
                     if not temp:
-                        connection.send(pickle.dumps('EOL'))
+                        conn.send(pickle.dumps('EOL'))
                         break
                     pickled_temp = pickle.dumps(temp)
-                    connection.send(pickled_temp)
-                    if (connection.recv(4096).decode() == 'Element Received'):
+                    conn.send(pickled_temp)
+                    if (conn.recv(4096).decode() == 'Element Received'):
                         pass
-                if(connection.recv(4096).decode() == 'List Received'):
-                    connection.close()
+                if(conn.recv(4096).decode() == 'List Received'):
+                    conn.close()
             else:
                 print("Error incorrect code received")
-                connection.close()
+                conn.close()
     
     #Open socket for initial connection by peer and devices
     def listener_socket(self):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock = socket.socket()
         #host = socket.gethostname()
         host = '127.0.0.1' #used for local test purposes
         port = 20560
         sock.bind((host, port))
         print("Listening")
         sock.listen(5)
+        context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        context.load_cert_chain(certfile=self.cert_file, keyfile=self.key_file)
+        #context.options |= ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1
+        context.set_ciphers('EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH')
         while True:
             connection, address = sock.accept()
+            conn = context.wrap_socket(connection, server_side=True)
             print("Socket opened "+str(address))
-            connection.send(b'CONNECTED')
-            rec = connection.recv(4096).decode()
+            conn.send(b'CONNECTED')
+            rec = conn.recv(4096).decode()
             if (rec == 'THIS PEER'):
-                self.send_peer_list(connection)
+                self.send_peer_list(conn)
             elif(rec == 'THIS DEVICE'):
-                self.device_connect(connection)
+                self.device_connect(conn)
             else:
                 print("Error incorrect code received")
-            connection.close()
+            conn.close()
 
     #Adds new peer to list and transmits updated list to peer
     def send_peer_list(self, connection):

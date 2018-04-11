@@ -22,6 +22,10 @@
     <Content Include="blockchain_file.chain" />
     <Content Include="commands.json" />
     <Content Include="devices.json" />
+    <Content Include="peercert.pem" />
+    <Content Include="peerkey.pem" />
+    <Content Include="servercert.pem" />
+    <Content Include="serverkey.pem" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Block.py" />
