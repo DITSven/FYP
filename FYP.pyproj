@@ -27,11 +27,18 @@
     <Compile Include="Block.py" />
     <Compile Include="BlockChain.py" />
     <Compile Include="CentralServer.py" />
-    <Compile Include="DeviceExample.py">
+    <Compile Include="DeviceGen.py" />
+    <Compile Include="DGUI.py" />
+    <Compile Include="Instruction.py">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="DeviceGen.py" />
+    <Compile Include="MultiDeviceLaunch.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="Peer.py" />
+    <Compile Include="readblocks.py">
+      <SubType>Code</SubType>
+    </Compile>
   </ItemGroup>
   <ItemGroup>
     <InterpreterReference Include="Global|PythonCore|3.6" />

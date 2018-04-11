@@ -7,17 +7,29 @@ import Block
 
 class CentralServer(object):
 
-    def __init__(self, client_list=None):
-        manager = multiprocessing.Manager()
+    def __init__(self, client_list=None, peer_devices=None, peer_id=None):
+        manager = multiprocessing.Manager()#For sending information across threads
+        #Populate client list, option to use an existing list
         if client_list == None:
             self.client_list = manager.list()
         else:
             self.client_list = manager.list().extend(client_list)
-        self.peer_id = multiprocessing.Value('l', 1)
-        self.lock = multiprocessing.Lock()
+        #List of devices connected to peers, option to use existing list
+        if peer_devices == None:
+            self.peer_devices = manager.list()
+        else:
+            self.peer_devices = manager.list().extend(peer_devices)
+        #peer count to be shared across threads, option to use existing count
+        if peer_id == None:
+            self.peer_id = multiprocessing.Value('l', 1)
+        else:
+            self.peer_id = multiprocessing.Value('l', peer_id)
+        #Open blockchain file and load into memory
         with open('blockchain_file.chain', 'rb') as bcf:
             self.blockchain = pickle.load(bcf)
+        self.lock = threading.Lock()
 
+    #Check that client is still up and running with exception for connection closing mid-test
     def client_connect_check(self, index):
         test_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         host = self.client_list[index][1]
@@ -35,6 +47,7 @@ class CentralServer(object):
         test_sock.close()
         return index
 
+    #Iterate through clients and run client_connect_check() and amend peer id's
     def test_clients_live(self):
         while True:
             time.sleep(5)
@@ -45,15 +58,12 @@ class CentralServer(object):
                     if index >= len(self.client_list):
                         break
                 for i in range(0, len(self.client_list)):
-                    print("id before: " + str(self.client_list[i][0]))
                     temp_array = [len(self.client_list[:i]) + 1, self.client_list[i][1],self.client_list[i][2]]
                     self.client_list[i] = temp_array
-                    print("id after: " + str(self.client_list[i][0]))
                 self.peer_id.value = len(self.client_list) + 1
-                print("Clients tested")
 
+    #Opens socket to send the peer list to existing peer without addition to list
     def peer_list_update(self):
-        lock = self.lock
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         #host = socket.gethostname()
         host = '127.0.0.1' #used for local test purposes
@@ -81,9 +91,9 @@ class CentralServer(object):
             else:
                 print("Error incorrect code received")
                 connection.close()
-
+    
+    #Open socket for initial connection by peer and devices
     def listener_socket(self):
-        lock = self.lock
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         #host = socket.gethostname()
         host = '127.0.0.1' #used for local test purposes
@@ -102,9 +112,11 @@ class CentralServer(object):
                 self.device_connect(connection)
             else:
                 print("Error incorrect code received")
-                connection.close()
+            connection.close()
 
+    #Adds new peer to list and transmits updated list to peer
     def send_peer_list(self, connection):
+        self.lock.acquire()
         print("send peer list")
         connection.send(b'HOST REQUEST')
         this_peer_host = connection.recv(4096).decode()
@@ -130,24 +142,56 @@ class CentralServer(object):
                     pass
             if(connection.recv(4096).decode() == 'List Received'):
                 self.send_chain(connection)
-                connection.close()
+            if(connection.recv(4096).decode() == 'Chain Received'):
+                self.lock.release()
         else:
             print("Error incorrect code received")
-            connection.close()
+            
 
+    #Connects device to peer
     def device_connect(self, connection):
         print("device connected")
         connection.send(b'PEER SEND')
         if (connection.recv(4096).decode() == 'PEER REQUEST'):
-            if not self.client_list[0]:
+            connection.send(b'DEVICE ID REQ')
+        devid = connection.recv(4096).decode()
+        isconnected = False
+        for i in range(0, len(self.client_list)):
+            iscapacity = False
+            if not self.client_list[i]:
                 print("Send failed")
                 connection.send(b'SEND FAIL')
             else:
-                connection.send(pickle.dumps(self.client_list[0]))
-            if (connection.recv(4096).decode() == 'PEER RECEIVED'):
-                print("Peer has been received")
-        connection.close()
+                if not self.peer_devices:
+                    peer_device = {"peer": self.client_list[i][0], "devices": [devid]}
+                    self.peer_devices.append(peer_device)
+                    connection.send(pickle.dumps(self.client_list[i]))
+                    if (connection.recv(4096).decode() == 'PEER RECEIVED'):
+                        print("Peer has been received")
+                        break
+                else:
+                    for p in range(0, len(self.peer_devices)):
+                        if self.peer_devices[p]["peer"] == self.client_list[i][0]:
+                            print("devices connected:", str(self.peer_devices[p]["devices"]))
+                            if len(self.peer_devices[p]["devices"]) >= 3:
+                                iscapacity = True
+                                break
+                            if len(self.peer_devices[p]["devices"]) < 3:
+                                self.peer_devices[p]["devices"].append(devid)
+                                connection.send(pickle.dumps(self.client_list[i]))
+                                if (connection.recv(4096).decode() == 'PEER RECEIVED'):
+                                    print("Peer has been received")
+                                isconnected = True
+                                break
+                    if isconnected == False and iscapacity == False:
+                        peer_device = {"peer": self.client_list[i][0], "devices": [devid]}
+                        self.peer_devices.append(peer_device)
+                        connection.send(pickle.dumps(self.client_list[i]))
+                        if (connection.recv(4096).decode() == 'PEER RECEIVED'):
+                            print("Peer has been received")
+                        break                
 
+    #Sends complete chain to peer
     def send_chain(self, connection):
         print("Sending chain")
         connection.send(b'CHAIN SEND')
@@ -163,14 +207,15 @@ class CentralServer(object):
                 connection.send(pickled_temp)
                 if (connection.recv(4096).decode() == 'Chain Element Received'):
                     pass
-            if(connection.recv(4096).decode() == 'Chain Received'):
-                connection.close()
         
-        
+    #Defines and starts threads
     def start_server(self):
         server_thread = threading.Thread(target=self.listener_socket, args=())
         test_clients = threading.Thread(target=self.test_clients_live, args=())
         peer_update = threading.Thread(target=self.peer_list_update, args=())
+        server_thread.setDaemon(True)
+        test_clients.setDaemon(True)
+        peer_update.setDaemon(True)
         server_thread.start()
         test_clients.start()
         peer_update.start()
