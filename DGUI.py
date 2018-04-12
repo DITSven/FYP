@@ -23,7 +23,7 @@ class DGUI(object):
         self.r_frame = Frame(self.window)
         self.l_up_frame = Frame(self.l_frame)
         self.l_down_frame = Frame(self.l_frame, width=50, height=50)
-        self.window_label = Label(self.window, text=device_name)
+        self.window.title(device_name)
         self.message = Label(self.r_frame, text="Message goes here")
         self.rng_label = Label(self.l_up_frame, text="Current Random Number")
         self.colour_label= Label(self.l_down_frame, text="Current Colour:")
@@ -60,10 +60,12 @@ class DGUI(object):
             self.out_command_cache.append(instruction)
             self.connect_label["text"]= "Connected"
             self.connect_button["text"] = "Disconnect"
+            time.sleep(1)#prevents spamming of commands
         elif self.connection == True:
             instruction = [self.commands[3], "Disconnected"]
             self.out_command_cache.append(instruction)
-            self.connection = False            
+            self.connection = False
+            time.sleep(1)
         
     #connect to central server and receive peer data
     def server_connection(self):
@@ -75,11 +77,10 @@ class DGUI(object):
             conn.connect((self.central_server_host, self.central_server_port))
         except socket.error:
             print('Could not connect socket')
-        print("Connected")
         if(conn.recv(4096).decode() == 'CONNECTED'):
-            print("Received")
+            pass
         else:
-            print("Error wrong code")
+            print("Connection error with server discovery")
         conn.send(b'THIS DEVICE')
         if (conn.recv(4096).decode() == 'PEER SEND'):
             conn.send(b'PEER REQUEST')
@@ -103,12 +104,10 @@ class DGUI(object):
                 break
             except socket.error:
                 print('Could not connect socket')
-        print("Connected")
         conn.send(b'DEVICE')
         if(conn.recv(4096).decode() == 'DEVICE PEER CONNECTED'):
             print("Received")
         else:
-            print("Error wrong code")
         conn.send(b'DEV ID SEND')
         if(conn.recv(4096).decode() == 'DEV ID REQ'):
             conn.send(self.device_name.encode())
@@ -118,7 +117,6 @@ class DGUI(object):
         if accpt == 'COMMAND IO REQ':
             self.command_io(conn)
         else:
-            print("Device not found")
             conn.shutdown(socket.SHUT_RDWR)
             conn.close()
             self.connection = False
@@ -131,11 +129,8 @@ class DGUI(object):
         while True:
             rec = conn.recv(4096).decode()
             if rec == 'COMMAND REQ':
-                print("got command req")
-                print(self.out_command_cache)
                 if len(self.out_command_cache) < 1:
                     conn.send(b'NO COMMAND')
-                    print("sent no command")
                 else:
                     conn.send(str(len(self.out_command_cache)).encode())
                     if (conn.recv(4096).decode() == 'COMMAND LENGTH RECEIVED'):
@@ -146,12 +141,10 @@ class DGUI(object):
                                 conn.send(pickle.dumps('END'))
                                 break
                             if temp[1] == "Disconnected":
-                                print("doing disconnected")
                                 pickled_temp = pickle.dumps(temp)
                                 conn.send(pickled_temp)
                                 if (conn.recv(4096).decode() == 'COMMAND RECEIVED'):
                                     conn.send(b'DISCONNECT')
-                                print("got comm list rec")
                                 del self.out_command_cache[:i+1]
                                 conn.shutdown(socket.SHUT_RDWR)
                                 conn.close()
@@ -165,7 +158,6 @@ class DGUI(object):
                         conn.send(b'OK')
                         if (conn.recv(4096).decode() == 'COMMAND LIST RECEIVED'):
                             conn.send(b'COMMAND LIST RECEIVED ACK')
-                            print("got comm list rec")
                             del self.out_command_cache[:list_size]
             elif rec == 'INSTRUCTION SEND':
                 conn.send(b'INSTRUCTION ACK')
@@ -187,11 +179,9 @@ class DGUI(object):
             if self.in_command_cache:
                 instruction = self.in_command_cache[0]
                 if instruction[1] == self.commands[3]:
-                    print("Changing colour")
                     self.colour["bg"] = instruction[2]
                     del self.in_command_cache[0]
                 if instruction[1] == self.commands[4]:
-                    print("Changing text")
                     self.message["text"] = instruction[2]
                     del self.in_command_cache[0]
 
@@ -204,7 +194,6 @@ class DGUI(object):
 
 	#load GUI elements into window and start RNG thread
     def load_window(self):
-        self.window_label.pack(side=TOP, fill=X)
         self.l_frame.pack(side=LEFT, fill=BOTH, expand=True)
         self.r_frame.pack(side=RIGHT)
         self.l_up_frame.pack(fill=BOTH)
