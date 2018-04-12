@@ -107,7 +107,6 @@ class DGUI(object):
         conn.send(b'DEVICE')
         if(conn.recv(4096).decode() == 'DEVICE PEER CONNECTED'):
             print("Received")
-        else:
         conn.send(b'DEV ID SEND')
         if(conn.recv(4096).decode() == 'DEV ID REQ'):
             conn.send(self.device_name.encode())
