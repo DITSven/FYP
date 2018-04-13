@@ -7,7 +7,6 @@ import random
 import ssl
 from hashlib import sha512
 from ctypes import c_char_p
-from Instruction import Instruction
 
 class Peer(object):
 
@@ -154,10 +153,99 @@ class Peer(object):
                     device_thread= threading.Thread(target=self.device_auth, args=(conn,))
                     device_thread.setDaemon(True)
                     device_thread.start()
+                elif rec == 'USER COM IN':
+                    self.user_connection_in(conn)
+                elif rec == 'USER COM OUT':
+                    self.user_connection_out(conn)
             except socket.error:
                 print("Socket tested")
                 conn.close()
     
+    def user_connection_out(self, conn):
+        conn.send(b'DEVICE ID?')
+        devid = conn.recv(4096).decode()
+        devidh = sha512(dev_id.encode()).hexdigest()
+        match = False
+        for i in self.blockchain:
+            if i.device_id == devidh:
+                print("Found device")
+                commands = i.commands
+                break
+        for i in in_command_cache:
+           if i[0] == devidh:
+                tempcache.append(i)
+        comlen = len(commands)
+        conn.send(comlen.encode())
+        if conn.recv(4096).decode() == 'COMLEN OK':
+            pass
+        for i in range(0, comlen):
+            temp = commands[i]
+            if not temp:
+                conn.send(pickle.dumps('EOF'))
+                break
+            pickled_temp = pickle.dumps(temp)
+            conn.send(pickled_temp)
+            if (conn.recv(4096).decode() == 'Command Received'):
+                pass
+        conn.send(b'SEND COMMAND')
+        com = conn.recv(4096)
+        colourcom = pickle.dumps(com)
+        self.out_command_cache.append([devid, colourcom[0], colourcom[1]])
+        conn.send(b'OK')
+        com = conn.recv(4096)
+        messagecom = pickle.dumps(com)
+        self.out_command_cache.append([devid, messagecom[0], messagecom[1]])
+        conn.close()
+        self.out_command_cache
+
+
+    def user_connection_in(self, conn):
+        tempcache = []
+        conn.send(b'DEVICE ID?')
+        devid = conn.recv(4096).decode()
+        devidh = sha512(dev_id.encode()).hexdigest()
+        match = False
+        for i in self.blockchain:
+            if i.device_id == devidh:
+                print("Found device")
+                commands = i.commands
+                break
+        for i in in_command_cache:
+            if i[0] == devidh:
+                tempcache.append(i)
+        comlen = len(commands)
+        conn.send(comlen.encode())
+        if conn.recv(4096).decode() == 'COMLEN OK':
+            pass
+        for i in range(0, comlen):
+            temp = commands[i]
+            if not temp:
+                conn.send(pickle.dumps('EOF'))
+                break
+            pickled_temp = pickle.dumps(temp)
+            conn.send(pickled_temp)
+            if (conn.recv(4096).decode() == 'Command Received'):
+                pass
+        if len(tempcache) < 1:
+            conn.send(b'NO CACHE')
+            conn.close()
+        else:
+            conn.send(b'CACHE TO SEND')
+            if conn.recv(4096).decode() == 'OK':
+                conn.send(len(tempcache).encode())
+            if conn.recv(4096).decode() == 'CACHE LEN OK':
+                pass
+            for i in range(0, len(tempcache)):
+                temp = tempcache[i]
+                if not temp:
+                    conn.send(pickle.dumps('EOF'))
+                    break
+                pickled_temp = pickle.dumps(temp)
+                conn.send(pickled_temp)
+                if (conn.recv(4096).decode() == 'Cache element Received'):
+                    pass
+
+
     def device_auth(self, connection):
         if(connection.recv(4096).decode() == 'DEV ID SEND'):
             connection.send(b'DEV ID REQ')

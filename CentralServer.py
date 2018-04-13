@@ -126,8 +126,17 @@ class CentralServer(object):
                 self.send_peer_list(conn)
             elif(rec == 'THIS DEVICE'):
                 self.device_connect(conn)
+            elif(rec == 'THIS USER'):
+                self.user_connect(conn)
             else:
                 print("Error incorrect code received")
+            conn.close()
+
+    def user_connect(self, conn):
+        peer = [self.client_list[0]]
+        pickled_peer = pickle.dumps(peer)
+        conn.send*(pickled_peer)
+        if conn.recv(4096).decode() == 'Peer rec OK':
             conn.close()
 
     #Adds new peer to list and transmits updated list to peer

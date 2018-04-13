@@ -33,9 +33,6 @@
     <Compile Include="CentralServer.py" />
     <Compile Include="DeviceGen.py" />
     <Compile Include="DGUI.py" />
-    <Compile Include="Instruction.py">
-      <SubType>Code</SubType>
-    </Compile>
     <Compile Include="MultiDeviceLaunch.py">
       <SubType>Code</SubType>
     </Compile>
