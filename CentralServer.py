@@ -1,4 +1,3 @@
-import multiprocessing
 import threading
 import socket
 import pickle
@@ -9,22 +8,21 @@ import Block
 class CentralServer(object):
 
     def __init__(self, client_list=None, peer_devices=None, peer_id=None):
-        manager = multiprocessing.Manager()#For sending information across threads
         #Populate client list, option to use an existing list
         if client_list == None:
-            self.client_list = manager.list()
+            self.client_list = []
         else:
-            self.client_list = manager.list().extend(client_list)
+            self.client_list = client_list
         #List of devices connected to peers, option to use existing list
         if peer_devices == None:
-            self.peer_devices = manager.list()
+            self.peer_devices = []
         else:
-            self.peer_devices = manager.list().extend(peer_devices)
+            self.peer_devices = peer_devices
         #peer count to be shared across threads, option to use existing count
         if peer_id == None:
-            self.peer_id = multiprocessing.Value('l', 1)
+            self.peer_id = 1
         else:
-            self.peer_id = multiprocessing.Value('l', peer_id)
+            self.peer_id = peer_id
         #Open blockchain file and load into memory
         with open('blockchain_file.chain', 'rb') as bcf:
             self.blockchain = pickle.load(bcf)
@@ -66,7 +64,7 @@ class CentralServer(object):
                 for i in range(0, len(self.client_list)):
                     temp_array = [len(self.client_list[:i]) + 1, self.client_list[i][1],self.client_list[i][2]]
                     self.client_list[i] = temp_array
-                self.peer_id.value = len(self.client_list) + 1
+                self.peer_id = len(self.client_list) + 1
 
     #Opens socket to send the peer list to existing peer without addition to list
     def peer_list_update(self):
@@ -149,8 +147,8 @@ class CentralServer(object):
         connection.send(b'PORT REQUEST')
         this_peer_port = int(connection.recv(4096).decode())
         print("Peer port: " + str(this_peer_port))
-        peer_details = [self.peer_id.value, this_peer_host, this_peer_port]
-        self.peer_id.value = self.peer_id.value + 1
+        peer_details = [self.peer_id, this_peer_host, this_peer_port]
+        self.peer_id = self.peer_id + 1
         self.client_list.append(peer_details)
         connection.send(b'PEER RECEIVED')
         if (connection.recv(4096).decode() == 'Peer List Request'):

@@ -2,7 +2,6 @@ import threading
 import socket
 import pickle
 import time
-import random
 import ssl
 from hashlib import sha512
 from Block import Block

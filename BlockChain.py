@@ -24,7 +24,7 @@ class BlockChain(Block):
         commands = json.load(open(self.commands_file, 'rb'))["commands"]
         return commands
         
-    #Return array of device details from commands file
+    #Return array of device details from devices file
     def open_devices_file(self):
         with open(self.devices_file, 'rb') as df:
             self.devices_unhashed = json.load(df)["devices"]
@@ -70,7 +70,8 @@ class BlockChain(Block):
 
     #Simple method to create single block
     def create_block(self):
-        return Block(self.devices[self.block_id - 1]["id"], self.devices[self.block_id - 1]["pswd"], self.commands[self.block_id -1], self.previous_hash, self.block_id, self.block_hash(self.commands[self.block_id -1], self.devices[self.block_id - 1]["id"], self.devices[self.block_id - 1]["pswd"]))
+        return Block(self.devices[self.block_id - 1]["id"], self.devices[self.block_id - 1]["pswd"], self.commands[self.block_id -1], self.previous_hash, self.block_id, 
+                     self.block_hash(self.commands[self.block_id -1], self.devices[self.block_id - 1]["id"], self.devices[self.block_id - 1]["pswd"]))
 
     #Creates list of blocks (blockchain)
     def create_blockchain(self):
