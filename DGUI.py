@@ -167,6 +167,7 @@ class DGUI(object):
                     temp_element = pickle.loads(temp_obj)
                     if (temp_element == 'EOL'):
                         break
+                    print(temp_element)
                     self.in_command_cache.append(temp_element)
                     conn.send(b'COMMAND RECEIVED')
                 conn.send(b'COMMAND LIST RECEIVED')
@@ -175,6 +176,7 @@ class DGUI(object):
     #runs commands received 
     def run_commands(self):
         while True:
+            print("running commands")
             if self.in_command_cache:
                 instruction = self.in_command_cache[0]
                 if instruction[1] == self.commands[3]:

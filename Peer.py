@@ -1,4 +1,3 @@
-import multiprocessing
 import threading
 import socket
 import pickle
@@ -6,25 +5,25 @@ import time
 import random
 import ssl
 from hashlib import sha512
-from ctypes import c_char_p
+from Block import Block
 
 class Peer(object):
 
     def __init__(self, host='127.0.0.1', s_port=20560, u_port=20566):
-        manager = multiprocessing.Manager()#Allows data to be shared across threads
+
         self.central_server_host = host
         self.central_server_port = s_port
         self.central_update_port = u_port
-        self.peer_server_host = multiprocessing.Value(c_char_p, b'')
-        self.peer_server_port = multiprocessing.Value('l', 0)
-        self.peer_list = manager.list()
-        self.device_list = manager.list()
-        self.connected_list = manager.list()
-        self.own_id = multiprocessing.Value('l', 1)
-        self.blockchain = manager.list()
-        #self.out_command_cache = manager.list()
+        self.peer_server_host = b''
+        self.peer_server_port = 0
+        self.peer_list = []
+        self.device_list = []
+        self.connected_list = []
+        self.own_id = 1
+        self.blockchain = []
+        #self.out_command_cache = []
         self.out_command_cache = [["9fd4e0b4-fc67-4f2c-b6dd-e9b70f3659a0", "177daa1eb3fbb32464e9a6d4d935fc6cbaf96679f5e6c76fa7152662bb09b01f4804592a3ecbffba3eea6c7e542957de7e72f7569a965d5d928fb9eec123ae13", "green"], ["9fd4e0b4-fc67-4f2c-b6dd-e9b70f3659a0", "84fdaef521eb32f1e80fdfee8bc907bf94c4abc43ec49026df0d4ce90f8cda568ec6ee76fcf33b29f44a66f51ab597f2f1a653bed36899b2766efbf699ebe0d5", "It works!"]]
-        self.in_command_cache = manager.list()
+        self.in_command_cache = []
         self.cert_file = "./peercert.pem"
         self.key_file = "./peerkey.pem"
         self.lock = threading.Lock()
@@ -49,9 +48,9 @@ class Peer(object):
             print("Error wrong code")
         conn.send(b'THIS PEER')
         if(conn.recv(4096).decode() == 'HOST REQUEST'):
-            conn.send(self.peer_server_host.value)
+            conn.send(self.peer_server_host)
         if(conn.recv(4096).decode() == 'PORT REQUEST'):
-            conn.send(str(self.peer_server_port.value).encode())
+            conn.send(str(self.peer_server_port).encode())
         if(conn.recv(4096).decode() == 'PEER RECEIVED'):
             conn.send(b'Peer List Request')
         list_size = int(conn.recv(4096).decode())
@@ -116,20 +115,20 @@ class Peer(object):
                 for i in range(0, len(self.peer_list)):
                     if self.peer_server_host == self.peer_list[i][1]:
                         if self.peer_server_port == self.peer_list[i][2]:
-                            self.own_id.value = self.peer_list[i][0]
+                            self.own_id = self.peer_list[i][0]
                 conn.send(b'List Received')
                 conn.shutdown(socket.SHUT_RDWR)
                 conn.close()
 
     #listener for incoming peer connections
     def peer_server_listener(self):
-        #self.peer_server_host.value = socket.gethostname().encode()
+        #self.peer_server_host = socket.gethostname().encode()
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.peer_server_host.value = b'127.0.0.1' #used for local test purposes
+        self.peer_server_host = b'127.0.0.1' #used for local test purposes
         for i in range(30000,40000):
             try:
-                sock.bind((self.peer_server_host.value.decode(), i))
-                self.peer_server_port.value = i
+                sock.bind((self.peer_server_host.decode(), i))
+                self.peer_server_port = i
                 print("Peer server socket open")
                 break
             except socket.error:
@@ -164,18 +163,16 @@ class Peer(object):
     def user_connection_out(self, conn):
         conn.send(b'DEVICE ID?')
         devid = conn.recv(4096).decode()
-        devidh = sha512(dev_id.encode()).hexdigest()
         match = False
         for i in self.blockchain:
-            if i.device_id == devidh:
-                print("Found device")
+            if i.device_id == sha512(devid.encode()).hexdigest():
                 commands = i.commands
                 break
-        for i in in_command_cache:
-           if i[0] == devidh:
+        for i in self.in_command_cache:
+           if i[0] == sha512(devid.encode()).hexdigest():
                 tempcache.append(i)
         comlen = len(commands)
-        conn.send(comlen.encode())
+        conn.send(str(comlen).encode())
         if conn.recv(4096).decode() == 'COMLEN OK':
             pass
         for i in range(0, comlen):
@@ -189,32 +186,33 @@ class Peer(object):
                 pass
         conn.send(b'SEND COMMAND')
         com = conn.recv(4096)
-        colourcom = pickle.dumps(com)
-        self.out_command_cache.append([devid, colourcom[0], colourcom[1]])
+        colourcom = pickle.loads(com)
+        print(colourcom)
+        self.out_command_cache.append(colourcom)
         conn.send(b'OK')
         com = conn.recv(4096)
-        messagecom = pickle.dumps(com)
-        self.out_command_cache.append([devid, messagecom[0], messagecom[1]])
+        messagecom = pickle.loads(com)
+        print(messagecom)
+        self.out_command_cache.append(messagecom)
         conn.close()
-        self.out_command_cache
+
 
 
     def user_connection_in(self, conn):
         tempcache = []
         conn.send(b'DEVICE ID?')
         devid = conn.recv(4096).decode()
-        devidh = sha512(dev_id.encode()).hexdigest()
-        match = False
         for i in self.blockchain:
-            if i.device_id == devidh:
-                print("Found device")
+            if i.device_id == sha512(devid.encode()).hexdigest():
+                print("commands ok")
                 commands = i.commands
                 break
-        for i in in_command_cache:
-            if i[0] == devidh:
+        for i in self.in_command_cache:
+            if i[0] == sha512(devid.encode()).hexdigest():
                 tempcache.append(i)
+                print(tempcache)
         comlen = len(commands)
-        conn.send(comlen.encode())
+        conn.send(str(comlen).encode())
         if conn.recv(4096).decode() == 'COMLEN OK':
             pass
         for i in range(0, comlen):
@@ -232,7 +230,7 @@ class Peer(object):
         else:
             conn.send(b'CACHE TO SEND')
             if conn.recv(4096).decode() == 'OK':
-                conn.send(len(tempcache).encode())
+                conn.send(str(len(tempcache)).encode())
             if conn.recv(4096).decode() == 'CACHE LEN OK':
                 pass
             for i in range(0, len(tempcache)):
@@ -244,6 +242,7 @@ class Peer(object):
                 conn.send(pickled_temp)
                 if (conn.recv(4096).decode() == 'Cache element Received'):
                     pass
+            conn.close()
 
 
     def device_auth(self, connection):
@@ -320,6 +319,7 @@ class Peer(object):
                                     print("Device closing connection (disconnect)")
                                     connection.close()
                                     self.lock.release()
+                                    thread.exit()
                                     return
                                 elif resp == 'OK':
                                     pass
@@ -331,6 +331,7 @@ class Peer(object):
                 except socket.error:
                     print("Device connection closing (error)")
                     self.lock.release()
+                    thread.exit()
                     return
     
     #Connects to peer
@@ -348,7 +349,7 @@ class Peer(object):
         except socket.error:
             print("Socket failed to connect")
         if is_connected:
-            if host == self.peer_server_host.value.decode() and port == self.peer_server_port.value:
+            if host == self.peer_server_host.decode() and port == self.peer_server_port:
                 print("Connected to self")
             conn.send(b'PEER')
             print("Peer Client Connected" + host + " " + str(port))
@@ -371,7 +372,7 @@ class Peer(object):
                                         break
                             if not is_connected:
                                 id, host, port = peer_list[i][0], peer_list[i][1], peer_list[i][2]
-                                if self.peer_server_host.value.decode() != host or self.peer_server_port.value != port:
+                                if self.peer_server_host.decode() != host or self.peer_server_port != port:
                                     client_connect = threading.Thread(target=self.peer_client_connect, args=(host, port))
                                     client_connect.start()
                                     client_connect.join()
@@ -391,7 +392,7 @@ class Peer(object):
                                         break
                             if not is_connected:
                                 id, host, port = peer_list[i][0], peer_list[i][1], peer_list[i][2]
-                                if self.peer_server_host.value.decode() != host or self.peer_server_port.value != port:
+                                if self.peer_server_host.decode() != host or self.peer_server_port != port:
                                     client_connect = threading.Thread(target=self.peer_client_connect, args=(host, port))
                                     client_connect.start()
                                     self.connected_list.append([id, host, port])

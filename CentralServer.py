@@ -133,9 +133,9 @@ class CentralServer(object):
             conn.close()
 
     def user_connect(self, conn):
-        peer = [self.client_list[0]]
+        peer = self.client_list[0]
         pickled_peer = pickle.dumps(peer)
-        conn.send*(pickled_peer)
+        conn.send(pickled_peer)
         if conn.recv(4096).decode() == 'Peer rec OK':
             conn.close()
 
